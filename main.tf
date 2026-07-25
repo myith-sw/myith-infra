@@ -136,7 +136,7 @@ resource "aws_vpc_endpoint" "s3" {
 
 resource "aws_security_group" "alb" {
   name        = "myith-alb-sg"
-  description = "ALB - 인터넷 80/443"
+  description = "ALB - allow HTTP and HTTPS from internet"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -166,7 +166,7 @@ resource "aws_security_group" "core" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "ALB에서만 앱 포트 허용"
+    description     = "App port from ALB only"
     from_port       = var.app_port
     to_port         = var.app_port
     protocol        = "tcp"
@@ -174,7 +174,7 @@ resource "aws_security_group" "core" {
   }
 
   ingress {
-    description = "SSH - var.ssh_allowed_cidr 로 제한 권장"
+    description = "SSH - restrict with var.ssh_allowed_cidr"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -194,11 +194,11 @@ resource "aws_security_group" "core" {
 # 접속은 SSM Session Manager로만 (IAM에 SSM 정책 부착되어 있음)
 resource "aws_security_group" "worker" {
   name        = "myith-worker-sg"
-  description = "Worker EC2 - 인터넷 인바운드 없음, Core에서만 접근"
+  description = "Worker EC2 - no internet inbound, reachable from Core only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Core -> RabbitMQ AMQP"
+    description     = "Core to RabbitMQ AMQP"
     from_port       = 5672
     to_port         = 5672
     protocol        = "tcp"
@@ -206,7 +206,7 @@ resource "aws_security_group" "worker" {
   }
 
   ingress {
-    description     = "Core -> RabbitMQ 관리콘솔"
+    description     = "Core to RabbitMQ management console"
     from_port       = 15672
     to_port         = 15672
     protocol        = "tcp"

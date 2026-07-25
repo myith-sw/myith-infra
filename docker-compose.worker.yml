@@ -1,5 +1,8 @@
 # Worker EC2에서 실행. FastAPI 앱 + RabbitMQ 자체 호스팅.
 # Worker는 프라이빗 서브넷이라 SSH 불가 → SSM Session Manager로 접속해서 실행.
+#
+# 환경변수 이름은 myith-worker 의 CLAUDE.md PART O-3 계약과 1:1로 맞춰야 한다.
+# 한쪽만 바꾸면 컨테이너가 뜨지 않거나 조용히 잘못된 대상에 붙는다.
 
 services:
   rabbitmq:
@@ -25,15 +28,29 @@ services:
     container_name: myith-worker
     restart: unless-stopped
     environment:
+      # --- 인프라가 주는 값 (terraform output) ---
       DATABASE_URL: postgresql://myith_admin:${DB_PASSWORD}@${RDS_ENDPOINT}:5432/myith
       REDIS_HOST: ${REDIS_ENDPOINT}
       REDIS_PORT: "6379"
+
+      # RabbitMQ 는 같은 compose 네트워크에 있다. 서비스명으로 접근한다.
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+      # S3 버킷명에는 랜덤 접미어가 붙는다. 하드코딩 금지.
+      # 자격증명은 EC2 인스턴스 프로파일에서 자동 획득한다.
       S3_BUCKET: ${S3_UPLOADS_BUCKET}
       AWS_REGION: ap-northeast-2
+
+      # --- 시크릿: 없어도 컨테이너는 떠야 한다 (CLAUDE.md C-3) ---
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_MODEL_LIGHT: ${LLM_MODEL_LIGHT:-}
+      NCS_SERVICE_KEY: ${NCS_SERVICE_KEY:-}
+      WANTED_API_KEY: ${WANTED_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     depends_on:
       rabbitmq:
         condition: service_healthy

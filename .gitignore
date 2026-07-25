@@ -6,3 +6,9 @@ terraform.tfvars
 *.pem
 *.pub
 .env
+
+# 배포용으로 생성한 실제 값 파일 (DB 비밀번호·JWT 시크릿 평문 포함).
+# `.env` 패턴은 deploy/env.core 같은 이름을 잡지 못하므로 디렉토리째 제외한다.
+deploy/
+env.core
+env.worker
