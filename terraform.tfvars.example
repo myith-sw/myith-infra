@@ -1,0 +1,19 @@
+# 이 파일을 terraform.tfvars 로 복사한 뒤 실제 값 입력
+#   cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars 는 .gitignore에 이미 포함되어 있다 (비밀번호 평문 포함)
+
+domain_name = "myith.store"
+
+db_password = "여기에_강력한_비밀번호_입력"
+
+# ssh-keygen -t ed25519 -f ~/.ssh/myith-key 로 생성 후 .pub 내용을 그대로 붙여넣기
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+
+# 본인 IP로 좁히기 권장:  curl ifconfig.me  결과 + "/32"
+# 예: ssh_allowed_cidr = "121.130.45.7/32"
+ssh_allowed_cidr = "0.0.0.0/0"
+
+core_instance_type   = "t3.small"
+worker_instance_type = "t3.small"
+db_instance_class    = "db.t4g.micro"
+redis_node_type      = "cache.t4g.micro"

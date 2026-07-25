@@ -1,0 +1,42 @@
+# Worker EC2에서 실행. FastAPI 앱 + RabbitMQ 자체 호스팅.
+# Worker는 프라이빗 서브넷이라 SSH 불가 → SSM Session Manager로 접속해서 실행.
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: myith-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"    # AMQP - Core가 WORKER_PRIVATE_IP:5672 로 연결
+      - "15672:15672"  # 관리 콘솔
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: ${ECR_WORKER_URI}:latest
+    container_name: myith-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://myith_admin:${DB_PASSWORD}@${RDS_ENDPOINT}:5432/myith
+      REDIS_HOST: ${REDIS_ENDPOINT}
+      REDIS_PORT: "6379"
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      S3_BUCKET: ${S3_UPLOADS_BUCKET}
+      AWS_REGION: ap-northeast-2
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  rabbitmq_data:

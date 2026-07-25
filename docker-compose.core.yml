@@ -1,0 +1,51 @@
+# Core EC2에서 실행. Spring Boot 앱만 (DB/Redis는 관리형 사용).
+# 환경변수 이름은 myith-core 의 application.yml 이 선언한 플레이스홀더와
+# 1:1로 맞췄다 (DB_URL, REDIS_HOST, RABBITMQ_* ...).
+# 값은 대부분 `terraform output` 결과에서 가져온다.
+
+services:
+  core:
+    image: ${ECR_CORE_URI}:latest
+    container_name: myith-core
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: "8080"
+
+      # --- RDS PostgreSQL ---
+      DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/myith
+      DB_USERNAME: myith_admin
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # --- ElastiCache Redis (AUTH 미설정이라 password 없음) ---
+      REDIS_HOST: ${REDIS_ENDPOINT}
+      REDIS_PORT: "6379"
+
+      # --- RabbitMQ (Worker EC2 에 동거) ---
+      RABBITMQ_HOST: ${WORKER_PRIVATE_IP}
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+      # --- S3 (Presigned URL 발급) ---
+      # 자격증명은 EC2 인스턴스 프로파일에서 자동 획득.
+      # 이게 되려면 metadata_options 의 hop limit 이 2 여야 한다 (main.tf 참조).
+      S3_BUCKET: ${S3_UPLOADS_BUCKET}
+      S3_REGION: ap-northeast-2
+
+      # --- 인증 ---
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+
+    # 이미지에 curl 이 없으면 이 healthcheck 는 항상 실패한다.
+    # 컨테이너는 정상 동작하지만 상태가 unhealthy 로 표시될 뿐이고,
+    # ALB 판정과는 무관하다. 거슬리면 healthcheck 블록을 통째로 지울 것.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
