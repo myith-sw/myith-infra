@@ -41,12 +41,16 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "worker" ]; then
   SHA_W=$(git rev-parse --short HEAD)
   echo "  SHA: $SHA_W"
 
-  docker build --platform linux/amd64 -t "$WORKER_ECR:$SHA_W" -t "$WORKER_ECR:latest" . 2>&1 | tail -3
+  docker build --platform linux/amd64 -t "$WORKER_ECR:$SHA_W" . 2>&1 | tail -3
   echo "  빌드 ✓"
 
   echo "── Worker 푸시 ──"
   docker push "$WORKER_ECR:$SHA_W" 2>&1 | grep -E "digest|Pushed|exists" | tail -3
-  docker push "$WORKER_ECR:latest" 2>&1 | grep -E "digest|Pushed|exists" | tail -3
+  # ECR 서버사이드 retag (Docker Desktop containerd 태그 버그 완전 회피)
+  MANIFEST_W=$(aws ecr batch-get-image --repository-name "${WORKER_ECR##*/}" --region "$REGION" \
+    --image-ids imageTag="$SHA_W" --query 'images[0].imageManifest' --output text)
+  aws ecr put-image --repository-name "${WORKER_ECR##*/}" --region "$REGION" \
+    --image-tag latest --image-manifest "$MANIFEST_W" >/dev/null 2>&1
   echo "  푸시 ✓ ($WORKER_ECR:$SHA_W + latest)"
 fi
 
@@ -59,12 +63,16 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "core" ]; then
   echo "  SHA: $SHA_C"
 
   ./gradlew bootJar -q
-  docker build --platform linux/amd64 -t "$CORE_ECR:$SHA_C" -t "$CORE_ECR:latest" . 2>&1 | tail -3
+  docker build --platform linux/amd64 -t "$CORE_ECR:$SHA_C" . 2>&1 | tail -3
   echo "  빌드 ✓"
 
   echo "── Core 푸시 ──"
   docker push "$CORE_ECR:$SHA_C" 2>&1 | grep -E "digest|Pushed|exists" | tail -3
-  docker push "$CORE_ECR:latest" 2>&1 | grep -E "digest|Pushed|exists" | tail -3
+  # ECR 서버사이드 retag (Docker Desktop containerd 태그 버그 완전 회피)
+  MANIFEST_C=$(aws ecr batch-get-image --repository-name "${CORE_ECR##*/}" --region "$REGION" \
+    --image-ids imageTag="$SHA_C" --query 'images[0].imageManifest' --output text)
+  aws ecr put-image --repository-name "${CORE_ECR##*/}" --region "$REGION" \
+    --image-tag latest --image-manifest "$MANIFEST_C" >/dev/null 2>&1
   echo "  푸시 ✓ ($CORE_ECR:$SHA_C + latest)"
 fi
 
