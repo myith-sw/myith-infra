@@ -41,9 +41,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "worker" ]; then
   SHA_W=$(git rev-parse --short HEAD)
   echo "  SHA: $SHA_W"
 
-  # buildx의 태그 버그 회피: SHA 태그로 빌드 후 latest를 docker tag로 붙인다
-  docker buildx build --platform linux/amd64 --load -t "$WORKER_ECR:$SHA_W" . 2>&1 | grep -v "^#" | tail -3
-  docker tag "$WORKER_ECR:$SHA_W" "$WORKER_ECR:latest"
+  docker build --platform linux/amd64 -t "$WORKER_ECR:$SHA_W" -t "$WORKER_ECR:latest" . 2>&1 | tail -3
   echo "  빌드 ✓"
 
   echo "── Worker 푸시 ──"
@@ -61,8 +59,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "core" ]; then
   echo "  SHA: $SHA_C"
 
   ./gradlew bootJar -q
-  docker buildx build --platform linux/amd64 --load -t "$CORE_ECR:$SHA_C" . 2>&1 | grep -v "^#" | tail -3
-  docker tag "$CORE_ECR:$SHA_C" "$CORE_ECR:latest"
+  docker build --platform linux/amd64 -t "$CORE_ECR:$SHA_C" -t "$CORE_ECR:latest" . 2>&1 | tail -3
   echo "  빌드 ✓"
 
   echo "── Core 푸시 ──"
