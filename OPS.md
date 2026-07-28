@@ -4,7 +4,12 @@
 
 ```
 INFRA_DIR=/Users/sungyoon/Desktop/sw-contest/myith-infra/myith-infra
+CORE_DIR=/Users/sungyoon/Desktop/sw-contest/myith-core
+WORKER_DIR=/Users/sungyoon/Desktop/sw-contest/myith-worker/myith-worker
 ```
+
+`CORE_DIR`·`WORKER_DIR` 은 `build-and-deploy.sh:12-13` 과 같은 값이다.
+그 스크립트가 이 두 디렉터리를 빌드하므로 배포 전 pull 대상이기도 하다.
 
 | 스크립트 | 용도 | 소요 |
 |---|---|---|
@@ -81,6 +86,47 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api.myith.store/api/health
 
 `200` 이어야 한다. `502` 면 아직 기동 중일 수 있으니 30초 뒤 다시 확인한다.
 
+## 배포 전 필수: git 동기화
+
+`build-and-deploy.sh`는 `CORE_DIR`·`WORKER_DIR`의 **로컬 작업 트리**를 빌드한다.
+원격에 푸시된 코드를 pull하지 않으면 옛 코드가 배포되고, 증상이 "고쳤는데 반영이 안 된다"로 나타나 원인을 찾기 어렵다.
+
+**`build-and-deploy.sh`가 자동으로 처리한다** — 스크립트가 빌드 전에:
+1. 미커밋 변경이 있으면 멈춘다 (의도치 않은 코드 배포 방지)
+2. `git checkout dev && git pull origin dev`로 최신 코드를 받는다
+
+### 미커밋 변경이 있으면 배포가 중단된다 — 먼저 확인할 것
+
+1번의 동작은 실행 방식에 따라 다르다. 이걸 모르면 "배포했는데 아무 일도 안 일어난다"가 된다.
+
+| 실행 방식 | 미커밋 변경이 있을 때 |
+|---|---|
+| 터미널에서 직접 (`./build-and-deploy.sh`) | `(y/N)` 확인을 묻는다 |
+| **`nohup ... &` (아래 권장 방식)** | **stdin 이 없어 물을 수 없으므로 중단한다** |
+
+백그라운드 실행은 stdin 이 없어 확인을 받을 수 없다. 그래서 fail-closed 로
+중단한다 — 물어보지 못한 채 의도하지 않은 코드를 배포하는 것보다 낫다.
+
+**따라서 배포 전에 두 저장소가 깨끗한지 먼저 본다:**
+
+```bash
+git -C "$CORE_DIR" status --porcelain
+git -C "$WORKER_DIR" status --porcelain
+```
+
+둘 다 **아무것도 출력하지 않아야** 정상이다. 뭔가 나오면 커밋하거나 되돌린 뒤
+배포한다. **미커밋 변경을 그대로 배포해야 한다면** 백그라운드가 아니라
+터미널에서 직접 실행해서 `y` 로 답한다.
+
+> `> /dev/null 2>&1` 로 실행하면 중단 사유 메시지도 같이 버려진다.
+> 원인을 봐야 할 때는 `> /tmp/deploy.log 2>&1` 로 바꿔 실행한다.
+
+수동으로 빌드할 때는 직접 동기화해야 한다:
+```bash
+cd "$CORE_DIR"   && git checkout dev && git pull origin dev
+cd "$WORKER_DIR" && git checkout dev && git pull origin dev
+```
+
 ## 배포: build-and-deploy.sh (권장)
 
 빌드 + 푸시 + deploy.sh를 한 번에 실행한다. **"배포해줘"면 이것만 돌리면 된다.**
@@ -145,9 +191,12 @@ docker push "$WORKER_ECR:latest" && docker push "$WORKER_ECR:$SHA"
 |---|---|
 | "서버 꺼줘", "정지", "stop" | `stop.sh --yes` |
 | "서버 켜줘", "시작", "start" | `start.sh --yes` → 완료 후 헬스체크 |
-| "배포해줘" (인프라 살아있을 때) | `nohup ./build-and-deploy.sh > /dev/null 2>&1 &` |
-| "Core 만 배포" | `nohup ./build-and-deploy.sh core > /dev/null 2>&1 &` |
-| "Worker 만 배포" | `nohup ./build-and-deploy.sh worker > /dev/null 2>&1 &` |
+| "배포해줘" (인프라 살아있을 때) | **① `git -C "$CORE_DIR" status --porcelain` / `$WORKER_DIR` 로 깨끗한지 확인** → ② `nohup ./build-and-deploy.sh > /dev/null 2>&1 &` (dev pull 은 스크립트가 자동) |
+| "Core 만 배포" | 위와 동일하게 확인 후 → `nohup ./build-and-deploy.sh core > /dev/null 2>&1 &` |
+| "Worker 만 배포" | 위와 동일하게 확인 후 → `nohup ./build-and-deploy.sh worker > /dev/null 2>&1 &` |
+
+빌드 대상은 **로컬 작업 트리**다. 스크립트가 `dev` 를 pull 하지만, 미커밋 변경이
+있으면 백그라운드 실행에서는 중단된다 — 위 "배포 전 필수" 절을 볼 것.
 
 ## 실행 전 확인할 것
 

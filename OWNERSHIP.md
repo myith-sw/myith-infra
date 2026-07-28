@@ -158,6 +158,8 @@ MYITH_DEMO_TOKEN=<임의의 긴 문자열>
 | SSM 붙자마자 명령이 로컬에서 실행됨 | 세션이 열리기 전에 붙여넣음 | `aws ssm start-session` 후 **`$` 프롬프트가 뜬 뒤에** 붙여넣는다. 여러 줄은 특히 주의 |
 | `.env` 에 값이 있는데 컨테이너에 없음 | compose `environment:` 누락 | 위 3번 ③ 참조 |
 | 손으로 넣은 값이 배포 후 사라짐 | `deploy.sh` 의 `get()` 승계 누락 | 위 3번 ① 참조 |
+| **고쳤는데 반영이 안 된다** | 로컬 pull 누락. `build-and-deploy.sh` 는 원격이 아니라 **로컬 작업 트리**를 빌드한다 | 스크립트가 `dev` 를 자동 pull 하지만, 다른 브랜치에서 작업했거나 push 를 안 했으면 그대로 옛 코드다. 증상이 "반영이 안 된다"로만 나와 진단이 어렵다 |
+| 배포했는데 아무 일도 안 일어남 | 미커밋 변경 + 백그라운드 실행. stdin 이 없어 확인을 못 받고 중단된다 | 배포 전 `git -C "$CORE_DIR" status --porcelain` 로 두 저장소가 깨끗한지 확인. `> /dev/null` 이면 중단 사유도 안 보인다 |
 
 ---
 
@@ -184,6 +186,19 @@ Route53 · ECR · S3 가 떠 있고 `api.myith.store` 가 연결돼 있다.
 
 `start.sh` / `stop.sh` 는 시간당 과금이 큰 4개(EC2 2대 · NAT · ALB)만 켜고 끈다.
 **terraform 을 새로 짜거나 전체 재적용할 일은 없다.**
+
+### 배포 경로에 반영된 것
+
+| 항목 | 상태 |
+|---|---|
+| `LLM_PROVIDER` (anthropic) | deploy.sh 승계 + compose 주입 완료 |
+| `CORS_ALLOWED_ORIGINS` | deploy.sh 승계 + compose 주입 완료 |
+| `MYITH_DEMO_ENABLED` / `MYITH_DEMO_TOKEN` | deploy.sh 승계 + 히어독 + compose 주입 완료. **기본 꺼짐(false)** |
+| 배포 전 `dev` 자동 pull | `build-and-deploy.sh` 가 두 저장소를 동기화. 미커밋이면 중단 |
+
+시연용 넛지 API 를 켜는 절차는 위 **3번 환경변수 계약**의 `MYITH_DEMO_*` 항목에
+있다 — `deploy/env.core` 에 두 줄 추가 후 `./deploy.sh core`, 끝나면 `false` 로
+되돌리고 재배포. 응답 코드(404/400/403)별 원인 구분표도 거기 있다.
 
 운영 절차(정지·시작·배포·실패 진단)는 [OPS.md](OPS.md) 를 본다.
 인프라 설계 근거와 의도적으로 제외한 항목은 [CLAUDE.md](CLAUDE.md) 를 본다.
