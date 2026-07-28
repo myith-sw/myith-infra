@@ -96,6 +96,15 @@ done
 [ "$warned" = "0" ] && echo "  필수 시크릿 4종 승계 완료"
 echo "  GOOGLE_CLIENT_ID 길이: ${#GOOGLE} (정상 72)"
 
+# 데모 API 는 기본 꺼짐이라 위 루프에 넣지 않는다. 매 배포 경고는 노이즈가 되어 안 읽힌다.
+# 켜져 있는데 토큰이 비면 DemoController 가 isBlank() 를 먼저 보고 403 을 던진다.
+# API 가 열리는 게 아니라 무슨 요청을 보내도 403 인 시연 불능 상태다.
+# 무대 위에서 403 원인을 찾는 게 최악이라 배포 시점에 잡는다.
+if [ "${DEMOEN:-false}" = "true" ] && [ -z "$DEMOTK" ]; then
+  echo "  !! 경고: MYITH_DEMO_ENABLED=true 인데 MYITH_DEMO_TOKEN 이 비어 있습니다"
+  echo "     POST /api/demo/nudge 가 항상 403 입니다. deploy/env.core 에 토큰을 넣으세요"
+fi
+
 echo "══ 2/5  S3 업로드 ══"
 aws s3 cp docker-compose.core.yml   "s3://$BUCKET/deploy/" --only-show-errors
 aws s3 cp docker-compose.worker.yml "s3://$BUCKET/deploy/" --only-show-errors
