@@ -99,6 +99,7 @@ docker-compose.core.yml 이 RABBITMQ_USERNAME: ${RABBITMQ_USER} 로 매핑한다
 ```
 env.core     JWT_SECRET · RABBITMQ_USER · RABBITMQ_PASSWORD
              GOOGLE_CLIENT_ID · CORS_ALLOWED_ORIGINS
+             MYITH_DEMO_ENABLED · MYITH_DEMO_TOKEN
 env.worker   LLM_PROVIDER · LLM_API_KEY · LLM_MODEL · LLM_MODEL_LIGHT
              NCS_SERVICE_KEY · WANTED_API_KEY · GITHUB_TOKEN
 ```
@@ -110,6 +111,39 @@ env.worker   LLM_PROVIDER · LLM_API_KEY · LLM_MODEL · LLM_MODEL_LIGHT
 `LLM_PROVIDER` 주의: Worker `config/settings.py` 의 기본값이 `"vertex"` 다.
 명시하지 않으면 API 키가 있어도 Vertex 경로로 붙으려다 실패한다.
 GCP 결제 프로필 문제로 Anthropic 직접 API 로 전환했으므로 `anthropic` 이어야 한다.
+
+`MYITH_DEMO_*` 주의: 시연 전용 넛지 API(`POST /api/demo/nudge`)를 켜는 스위치다.
+Core 의 `DemoController` 가 `@ConditionalOnProperty(havingValue = "true")` 라
+**꺼져 있으면 빈 자체가 등록되지 않고 404 가 난다.** 500 이나 401 이 아니라 404 이므로
+"경로를 잘못 썼나"로 오진하기 쉽다.
+
+**기본값은 `false` 다. 시연 직전에만 켠다.** `SecurityConfig` 가 `/api/demo/**` 를
+permitAll 로 열어두기 때문에, 켜는 순간 인증을 통과한 사용자가 아니어도 경로에 닿는다.
+**유일한 방어선이 `X-Demo-Token` 헤더 검증 하나뿐이다.**
+
+토큰을 비워두면 어떻게 되는지는 알아둘 것: `DemoController` 가
+`demoToken.isBlank()` 를 먼저 보고 403 을 던진다(fail-closed). 즉 빈 토큰이
+API 를 열어버리지는 않고, 대신 **무슨 요청을 보내도 403 이라 시연이 안 된다.**
+무대 위에서 403 을 보고 원인을 찾는 상황이 최악이므로 `ENABLED=true` 와
+`TOKEN` 은 항상 같이 설정한다.
+
+증상별 원인 구분:
+
+| 응답 | 원인 |
+|---|---|
+| `404` | `MYITH_DEMO_ENABLED` 가 false/미전달 — 빈 자체가 없다 |
+| `400` | `X-Demo-Token` 헤더 자체를 안 보냈다 |
+| `403` | 토큰 불일치, **또는 서버측 `MYITH_DEMO_TOKEN` 이 비어 있다** |
+| `404` + `User not found` | 켜진 건 맞고 `userId` 가 없다 |
+
+```bash
+# deploy/env.core 에 추가한 뒤  ./deploy.sh core
+MYITH_DEMO_ENABLED=true
+MYITH_DEMO_TOKEN=<임의의 긴 문자열>
+```
+
+토큰 값은 스크립트나 compose 에 하드코딩하지 않는다. `deploy/env.core` 에만 둔다.
+시연이 끝나면 `MYITH_DEMO_ENABLED=false` 로 되돌리고 다시 배포한다.
 
 ---
 

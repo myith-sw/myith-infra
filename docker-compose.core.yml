@@ -44,6 +44,12 @@ services:
       # Vercel 프리뷰 URL 패턴은 앱의 allowedOriginPatterns 가 처리한다.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
 
+      # --- 시연 전용 (기본 꺼짐) ---
+      # true 일 때만 DemoController 빈이 등록된다(@ConditionalOnProperty).
+      # 토큰은 X-Demo-Token 헤더로 검증하므로 반드시 같이 설정한다.
+      MYITH_DEMO_ENABLED: ${MYITH_DEMO_ENABLED:-false}
+      MYITH_DEMO_TOKEN: ${MYITH_DEMO_TOKEN:-}
+
       JAVA_OPTS: "-Xms256m -Xmx512m"
 
     # 이미지에 curl 이 없으면 이 healthcheck 는 항상 실패한다.

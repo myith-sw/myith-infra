@@ -47,6 +47,8 @@ MQUSER=$(get RABBITMQ_USER env.core)
 MQPASS=$(get RABBITMQ_PASSWORD env.core)
 GOOGLE=$(get GOOGLE_CLIENT_ID env.core)
 CORS=$(get CORS_ALLOWED_ORIGINS env.core)
+DEMOEN=$(get MYITH_DEMO_ENABLED env.core)
+DEMOTK=$(get MYITH_DEMO_TOKEN env.core)
 LLMP=$(get LLM_PROVIDER env.worker)
 LLM=$(get LLM_API_KEY env.worker);        LLMM=$(get LLM_MODEL env.worker)
 LLML=$(get LLM_MODEL_LIGHT env.worker);   NCS=$(get NCS_SERVICE_KEY env.worker)
@@ -65,6 +67,8 @@ RABBITMQ_PASSWORD=$MQPASS
 JWT_SECRET=$JWT
 GOOGLE_CLIENT_ID=$GOOGLE
 CORS_ALLOWED_ORIGINS=$CORS
+MYITH_DEMO_ENABLED=${DEMOEN:-false}
+MYITH_DEMO_TOKEN=$DEMOTK
 EOF
 
 cat > deploy/env.worker <<EOF
