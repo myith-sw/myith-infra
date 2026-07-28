@@ -12,3 +12,6 @@ terraform.tfvars
 deploy/
 env.core
 env.worker
+
+# 실행 로그. 인스턴스 ID·공인 IP·엔드포인트가 남는다.
+.myith-run.log

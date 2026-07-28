@@ -45,6 +45,8 @@ services:
       AWS_REGION: ap-northeast-2
 
       # --- 시크릿: 없어도 컨테이너는 떠야 한다 (CLAUDE.md C-3) ---
+      # Worker settings.py 기본값이 vertex 라 반드시 명시한다.
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_MODEL_LIGHT: ${LLM_MODEL_LIGHT:-}
