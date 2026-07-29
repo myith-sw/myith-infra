@@ -98,7 +98,8 @@ docker-compose.core.yml 이 RABBITMQ_USERNAME: ${RABBITMQ_USER} 로 매핑한다
 
 ```
 env.core     JWT_SECRET · RABBITMQ_USER · RABBITMQ_PASSWORD
-             GOOGLE_CLIENT_ID · CORS_ALLOWED_ORIGINS
+             GOOGLE_CLIENT_ID · GOOGLE_DESKTOP_CLIENT_ID
+             CORS_ALLOWED_ORIGINS
              MYITH_DEMO_ENABLED · MYITH_DEMO_TOKEN
 env.worker   LLM_PROVIDER · LLM_API_KEY · LLM_MODEL · LLM_MODEL_LIGHT
              NCS_SERVICE_KEY · WANTED_API_KEY · GITHUB_TOKEN
@@ -107,6 +108,18 @@ env.worker   LLM_PROVIDER · LLM_API_KEY · LLM_MODEL · LLM_MODEL_LIGHT
 나머지(RDS·Redis·S3·ECR 엔드포인트, 인스턴스 ID)는 승계가 아니라
 매번 `terraform output` 에서 새로 읽는다. 인프라를 `stop.sh`/`start.sh` 로
 재생성하면 값이 바뀌기 때문이다.
+
+`GOOGLE_DESKTOP_CLIENT_ID` 출처: Google Cloud Console 의 **Desktop application**
+OAuth Client ID 다. 웹 Client 와 **같은 프로젝트에 생성해야** OAuth 동의 화면과
+테스트 사용자 목록을 공유한다. 다른 프로젝트에 만들면 동의 화면 설정과
+테스트 사용자를 따로 관리해야 하고, 미승인 앱 경고가 따로 뜬다.
+
+Electron 은 웹이 아니라 Desktop Client 로 로그인하므로 ID Token 의 `aud` 가
+웹 Client ID 와 다르다. Core 가 두 audience 를 모두 허용해야 통과한다.
+**비어 있어도 Core 는 정상 기동한다** — 빈 값을 걸러내도록 구현돼 있어,
+미설정 시 웹 로그인만 동작하고 Electron 로그인만 실패한다. 그래서
+`deploy.sh` 의 경고 루프에는 넣지 않았다. Electron 을 쓰지 않는 배포에서도
+정상인 값이라 매번 경고하면 노이즈가 된다.
 
 `LLM_PROVIDER` 주의: Worker `config/settings.py` 의 기본값이 `"vertex"` 다.
 명시하지 않으면 API 키가 있어도 Vertex 경로로 붙으려다 실패한다.

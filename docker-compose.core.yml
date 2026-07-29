@@ -38,6 +38,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
 
+      # Electron 은 Desktop application OAuth Client 로 로그인한다.
+      # Core 가 웹·Desktop 두 audience 를 모두 허용해야 Electron 로그인이 통과한다.
+      # 미설정이면 웹 로그인만 동작한다(기동 실패 아님).
+      GOOGLE_DESKTOP_CLIENT_ID: ${GOOGLE_DESKTOP_CLIENT_ID:-}
+
       # --- CORS ---
       # 쉼표 구분. 프론트 도메인이 바뀌면 이미지 재빌드 없이
       # EC2 의 .env 만 고치고 컨테이너를 재시작하면 된다.
