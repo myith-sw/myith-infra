@@ -390,3 +390,63 @@ HTTP 코드: 403=토큰불일치 / 404=userId없음·데모모드꺼짐 / 000=�
 - DB 를 사용자 승인 없이 수정하지 마라 (SELECT 는 자유).
 - Vercel DNS 값을 추측하지 마라. 사용자가 준 값만 쓴다.
 - 실패하면 멈추고 로그를 보고해라. 다른 방법을 임의로 시도하지 마라.
+
+## §13 시연 실행 절차
+
+### 현재 AI 상태
+
+LLM 활성. 서술형·GitHub·업로드 파일이 Worker 에서 수집·판정되어
+user_competency / user_quest_guidance 에 반영된다. STAR AI 보완도 정상 동작한다.
+⚠ 스캔(이미지) PDF 는 페이지마다 Vision 을 순차 호출해 SSE 300초 벽을 넘길 수 있다.
+  시연에는 텍스트가 있는 PDF 를 쓴다.
+⚠ 로드맵 생성에 10~40초 걸린다. 시연 대본에 이 대기를 넣어라.
+
+### "배포해줘" 라고 하면
+
+1. build-and-deploy.sh 로 재배포한다
+2. ★ 완료 후 반드시 경고를 출력한다:
+   **"넛지 큐가 초기화됐다. 시연 전 `./demo.sh nudge reset` 을 실행하라"**
+
+### "시연해줘" 라고 하면 — 재배포하지 않는다
+
+1. 대기 중인 재배포가 없는지 확인한다. 있으면 먼저 배포하고, 시연은 그 뒤다
+2. `./demo.sh check` — 데모 모드·토큰·API 200 확인
+3. users 의 usr_2 ago_sec 확인
+   - 3 근처 → 정상 (앱 켜짐 + MYITH_DEMO_MODE=1)
+   - 20~30 → 앱은 켜졌으나 DEMO_MODE 미적용. PM 에게 재실행 요청
+   - 수백 이상 → 앱이 꺼져 있다. 켜기 전엔 말풍선이 안 뜬다
+4. `./demo.sh nudge reset` (회차를 1 로 초기화)
+5. `./demo.sh nudge` 1발 → 1/3 ABSENCE_48H "이틀 동안 못 봤어요…"
+6. `./demo.sh nudge` 2발 → 2/3 UPSET "하루 종일 안 보이네요…" (요청 시)
+7. `./demo.sh nudge` 3발 → 3/3 ANNOYING "완료하지 않은 퀘스트가…" (요청 시)
+8. 발사 후 시연이 끝날 때까지 **재배포·재시작 금지**
+
+### 왜 순서가 이런가
+
+- 넛지 큐는 Core 프로세스 메모리(ConcurrentHashMap)다. 재배포하면 대기 중 신호가 사라진다
+- Electron 렌더러(myith-sw/myith-app)가 같은 (타입,문구) 조합을 앱 실행당 1회만 표시한다
+  - `src/heartbeat.js` — `eventId = heartbeat-${nudgeType}:${message}` (결정론적)
+  - `src/renderer/renderer.js` — `seenEventIds(Set)` 가 그 ID를 기억, 재수신 시 조용히 폐기.
+    이 Set 을 비우는 코드가 없다 (resetPetState 도 안 건드림)
+  - 증상: 메인 로그 "Pet reaction: ..." 는 찍히는데 말풍선만 안 뜬다
+  - → demo.sh 가 타입을 자동 회전시켜 3연발을 보장한다
+  - → Core 의 message 파라미터(U+200B)로 같은 타입 반복도 가능하다
+  - → 앱을 완전히 종료 후 재실행하면 Set 이 초기화된다.
+    Core 재배포·재로그인·펫 숨기기는 효과가 없다
+
+### PM 노트북 실행 명령 (MYITH_DEMO_MODE=1 필수 — 폴링 30초 → 3초)
+
+```bash
+cd ~/Downloads/myith-electron-mascot-example && \
+MYITH_API_BASE_URL="https://api.myith.store" \
+MYITH_WEB_URL="https://myith.store" \
+MYITH_DEMO_MODE=1 \
+MYITH_GOOGLE_DESKTOP_CLIENT_ID="<Desktop 클라이언트 ID>" \
+MYITH_GOOGLE_DESKTOP_CLIENT_SECRET="<Desktop 클라이언트 시크릿>" \
+npm start
+```
+
+### 최후 수단
+
+PM 노트북에서 키보드 7 / 8 / 9 → NORMAL / ANNOYING / UPSET.
+이 경로(playDemoPetState)는 중복 차단을 거치지 않아 무한히 동작하며 서버가 죽어도 된다.
