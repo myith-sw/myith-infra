@@ -396,10 +396,18 @@ HTTP 코드: 403=토큰불일치 / 404=userId없음·데모모드꺼짐 / 000=�
 ### 현재 AI 상태
 
 LLM 활성. 서술형·GitHub·업로드 파일이 Worker 에서 수집·판정되어
-user_competency / user_quest_guidance 에 반영된다. STAR AI 보완도 정상 동작한다.
-⚠ 스캔(이미지) PDF 는 페이지마다 Vision 을 순차 호출해 SSE 300초 벽을 넘길 수 있다.
-  시연에는 텍스트가 있는 PDF 를 쓴다.
-⚠ 로드맵 생성에 10~40초 걸린다. 시연 대본에 이 대기를 넣어라.
+user_competency 에 반영된다. STAR AI 보완도 정상 동작한다.
+user_quest_guidance(층2 문구 개인화)는 의도적으로 0건이다.
+Worker 의 `_narrative_text()` 가 narrative.strength/difficulty 만 읽는데,
+프론트 구버전이 서술을 experiences[].content 로 보내므로 빈 문자열을 반환한다.
+→ Core 가 층1(검수 완료된 job_profile 의 guidance 템플릿)을 쓰며, 시연에 더 안전하다.
+
+#### 소요시간 실측값
+- **자가진단만(선택형)** → 200 동기, 1~3초
+- **서술형 + GitHub** → 202 비동기, 약 30초 (GitHub fetch 1초 + LLM 역량 추출 14초 + 전파·조립)
+- **PDF 첨부 시** 더 길어지며 SSE 300초 벽에 근접한다. **시연에는 PDF 를 붙이지 않는다**
+- **시연 대본**: 무대에서는 빠른 경로(선택형)로 생성하고, AI 교차검증 결과는
+  미리 만들어 둔 로드맵(RID=68)으로 보여준다
 
 ### "배포해줘" 라고 하면
 
