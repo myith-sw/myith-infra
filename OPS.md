@@ -299,9 +299,20 @@ Vercel 이 요구한 DNS 값(A 레코드 IP / CNAME)을 알려줘야 한다.
 5) 실패해도 되돌리지 마라. `myith-frontend.vercel.app` 이 그대로 살아 있으므로
    시연은 그 URL 로 하면 된다. 상황만 보고해라.
 
-⚠️ **시연 종료 후 `terraform destroy` 를 하기 전에 이 단계에서 만든 Route53 레코드를
-먼저 삭제해야 한다.** `aws_route53_zone` 에 `force_destroy` 가 없어서
-레코드가 남아 있으면 destroy 가 실패한다.
+⚠️ **시연 종료 후 `terraform destroy` 전에 수동 생성한 Route53 레코드를 먼저 삭제해야 한다.**
+`aws_route53_zone` 에 `force_destroy` 가 없어 레코드가 남아 있으면 destroy 가 실패한다.
+삭제 대상 (STEP 1 에서 수동 생성한 것):
+- `A     myith.store       → 216.198.79.1`
+- `CNAME www.myith.store   → ecbf808dd538f972.vercel-dns-017.com`
+```bash
+ZONE_ID=Z04008381GH0KXA9Z65DT
+aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch '{
+  "Changes": [
+    {"Action":"DELETE","ResourceRecordSet":{"Name":"myith.store","Type":"A","TTL":300,"ResourceRecords":[{"Value":"216.198.79.1"}]}},
+    {"Action":"DELETE","ResourceRecordSet":{"Name":"www.myith.store","Type":"CNAME","TTL":300,"ResourceRecords":[{"Value":"ecbf808dd538f972.vercel-dns-017.com"}]}}
+  ]
+}'
+```
 
 ### C. STEP 2 — 배포 ("배포해줘")
 
