@@ -231,3 +231,133 @@ docker push "$WORKER_ECR:latest" && docker push "$WORKER_ECR:$SHA"
   DB 비밀번호와 JWT 시크릿이 평문으로 들어 있다. `.gitignore` 에 있지만
   `git add -f` 등으로 강제 추가하지 않는다.
 - AWS 리소스를 이 저장소에서 만들지 않는다. 인프라는 myith-infra 소유다.
+
+## 11. 시연 운영
+
+### A. 명령어 사전 — 사용자가 이렇게 말하면 그 동작만 한다
+
+| 사용자 발화 | 실행 | 비고 |
+|---|---|---|
+| "시연해줘" / "신호" / "넛지" / "쏴줘" | `./demo.sh nudge` | **1초. 배포·서버기동·git·상태확인을 끼워 넣지 마라. 시연 중엔 1초가 중요하다.** |
+| (타입 지정) | `./demo.sh nudge UPSET` | ANNOYING \| UPSET \| ABSENCE_48H |
+| (userId 지정) | `./demo.sh nudge ABSENCE_48H 7` | |
+| "서버 켜줘" / "시연 준비" | STEP 3 절차 | |
+| "배포해줘" | STEP 2 절차 | |
+| "도메인 붙여줘" | STEP 1 절차 | |
+| "상태 확인" / "지금 되나" | `./demo.sh check` | |
+| "서버 꺼줘" / "시연 끝났어" | `./demo.sh down` | |
+| "userId 알려줘" | `./demo.sh users` | |
+
+작업 디렉토리는 항상 `/Users/sungyoon/Desktop/sw-contest/myith-infra/myith-infra` 이다. 다른 곳에서 실행하지 마라.
+
+### B. STEP 1 — 도메인 연결 ("도메인 붙여줘")
+
+전제: 사용자가 Vercel 대시보드에서 myith.store 를 이미 추가했고,
+Vercel 이 요구한 DNS 값(A 레코드 IP / CNAME)을 알려줘야 한다.
+그 값을 못 받았으면 실행하지 말고 사용자에게 요청해라. 추측해서 넣지 마라.
+
+1) CORS 에 도메인 추가 — ★ 이걸 빼면 웹이 통째로 안 뜬다
+   `deploy/env.core` 의 `CORS_ALLOWED_ORIGINS` 현재 값을 먼저 읽어라.
+   기존 값을 지우지 말고 뒤에 아래 둘을 콤마로 덧붙여라:
+   `https://myith.store,https://www.myith.store`
+   규칙:
+   - 이 한 줄만 바꾼다. 다른 줄은 절대 건드리지 마라.
+   - 따옴표를 붙이지 마라 (`deploy.sh` 가 `cut -d= -f2-` 로 읽는다).
+   - 수정 전 백업하고, 수정 후 diff 로 그 줄만 바뀌었는지 확인해라.
+     다른 줄이 바뀌었으면 되돌리고 보고해라.
+
+2) Route53 레코드 생성
+   ```bash
+   ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name myith.store \
+     --query 'HostedZones[0].Id' --output text | sed 's#/hostedzone/##')
+   ```
+   사용자가 준 Vercel 값으로 A(또는 ALIAS)·CNAME 레코드를 생성해라.
+   ★ `api.myith.store` 레코드는 절대 건드리지 마라. Terraform 소유다.
+   ★ NS·SOA 레코드도 건드리지 마라.
+   생성 후 확인:
+   ```bash
+   dig +short myith.store
+   dig +short www.myith.store
+   ```
+
+3) Core 재배포 (CORS 반영) — STEP 2 절차를 그대로 수행해라.
+
+4) 검증 — 아래 3개를 실제로 돌려 결과를 보고해라
+   ```bash
+   curl -sI -H "Origin: https://myith.store" https://api.myith.store/api/health \
+     | grep -i access-control-allow-origin
+   # → https://myith.store 가 나와야 한다
+
+   curl -sI -H "Origin: https://myith-frontend.vercel.app" https://api.myith.store/api/health \
+     | grep -i access-control-allow-origin
+   # → 기존 것도 여전히 통과해야 한다  ★ 이게 깨지면 즉시 되돌려라
+
+   curl -s -o /dev/null -w '%{http_code}\n' https://myith.store
+   # → 200. 아직 SSL 발급 중이면 4xx/5xx 가 나올 수 있다. 30분 뒤 재확인.
+   ```
+
+5) 실패해도 되돌리지 마라. `myith-frontend.vercel.app` 이 그대로 살아 있으므로
+   시연은 그 URL 로 하면 된다. 상황만 보고해라.
+
+⚠️ **시연 종료 후 `terraform destroy` 를 하기 전에 이 단계에서 만든 Route53 레코드를
+먼저 삭제해야 한다.** `aws_route53_zone` 에 `force_destroy` 가 없어서
+레코드가 남아 있으면 destroy 가 실패한다.
+
+### C. STEP 2 — 배포 ("배포해줘")
+
+1) 두 레포가 clean + dev 브랜치인지 먼저 확인. 아니면 멈추고 보고해라.
+   ```bash
+   git -C /Users/sungyoon/Desktop/sw-contest/myith-core status --porcelain
+   git -C /Users/sungyoon/Desktop/sw-contest/myith-worker/myith-worker status --porcelain
+   ```
+2) 변경 있는 쪽만 실행 (판단이 애매하면 둘 다 — 안전한 쪽이다)
+   ```bash
+   ./build-and-deploy.sh worker   # worker 를 먼저. alembic + load_all 이 거기서 돈다.
+   ./build-and-deploy.sh core
+   ```
+3) 배포 후 확인해서 보고:
+   - `docker compose ps` (core/worker/rabbitmq 전부 Up)
+   - Core 로그의 `Google OAuth audiences configured: N` → 2 여야 한다
+   - `select id, status from quest where id in (285,299,379);` → 전부 OPEN
+   - `select job_code, tagline from job where job_code='security';`
+     → `정보 시스템의 취약점을 진단하고 보안 대책을 수립·운영하는 직무`
+
+### D. STEP 3 — 서버 켜기 ("서버 켜줘" / "시연 준비")
+
+```bash
+./demo.sh up        # 10~15분. 이미지 빌드 없음. ECR latest 를 받아 기동
+```
+
+끝나면 `./demo.sh check` 결과와 함께 아래 문장을 출력해라:
+> "PM 에게 'npm start 하세요' 라고 알리면 됩니다."
+
+★ 서버를 켜도 DB 데이터는 그대로다. `stop.sh` 는 EC2·NAT·ALB 만 destroy 하고
+RDS·Redis·S3·ECR·Route53·ACM 은 유지한다.
+
+### E. 넛지 동작 원리
+
+서버는 신호를 메모리 큐(`ConcurrentHashMap`)에 넣는다.
+앱이 `POST /api/heartbeat` 를 보내는 순간 consume(remove) 되어 화면이 바뀐다.
+- 큐는 만료되지 않는다 → 앱이 물어보기만 하면 반드시 전달된다
+- `queue()` 가 put 이라 여러 번 쏴도 하나로 덮인다. 연타 무의미
+- 메모리에 있으므로 **★ 넛지를 쏜 뒤에는 절대 재배포·재시작하지 마라**
+
+200 인데 화면이 안 바뀌면 앱이 안 물어보는 것이다. 아래를 안내만 해라:
+1. PM 노트북에 앱이 떠 있나 (터미널 창 닫으면 죽는다)
+2. 앱이 로그인돼 있나
+3. 로그인 계정이 지정한 userId 와 같은가 ← 가장 흔한 원인
+4. 폴링 주기가 긴가 (30초면 최대 30초)
+
+HTTP 코드: 403=토큰불일치 / 404=userId없음·데모모드꺼짐 / 000=서버꺼짐
+
+### F. 절대 규칙
+
+- **`deploy/env.core` 를 절대 지우지 마라.**
+  `deploy.sh` 는 배포마다 이 파일을 다시 쓰는데 값을 이 파일 자신에서 승계한다.
+  JWT_SECRET·DB_PASSWORD·GOOGLE_*·MYITH_DEMO_*·CORS 의 유일한 원본이다.
+  지우면 전부 빈 값이 되고 데모 엔드포인트가 404 가 된다.
+- `demo.sh` / `start.sh` / `stop.sh` / `deploy.sh` / `build-and-deploy.sh` 를 수정하지 마라. 실행만.
+- `terraform apply`·`destroy` 를 직접 부르지 마라.
+- DB 를 사용자 승인 없이 수정하지 마라 (SELECT 는 자유).
+- Vercel DNS 값을 추측하지 마라. 사용자가 준 값만 쓴다.
+- 실패하면 멈추고 로그를 보고해라. 다른 방법을 임의로 시도하지 마라.
