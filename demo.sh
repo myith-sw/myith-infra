@@ -10,7 +10,7 @@
 #   ./demo.sh down          서버 끄기 (과금 중단)
 #
 # ▼ 시연 전에 이 값만 자기 userId 로 바꿔두면 nudge 에 인자를 안 써도 된다
-USER_ID_DEFAULT=1
+USER_ID_DEFAULT=2
 
 API="${API:-https://api.myith.store}"
 WEB="${WEB:-https://myith.store}"
