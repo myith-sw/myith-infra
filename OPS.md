@@ -238,9 +238,10 @@ docker push "$WORKER_ECR:latest" && docker push "$WORKER_ECR:$SHA"
 
 | 사용자 발화 | 실행 | 비고 |
 |---|---|---|
-| "시연해줘" / "신호" / "넛지" / "쏴줘" | `./demo.sh nudge` | **1초. 배포·서버기동·git·상태확인을 끼워 넣지 마라. 시연 중엔 1초가 중요하다.** |
-| (타입 지정) | `./demo.sh nudge UPSET` | ANNOYING \| UPSET \| ABSENCE_48H |
+| "시연해줘" / "신호" / "넛지" / "쏴줘" | `./demo.sh nudge` | **1초. 타입 자동 회전. 배포·서버기동·git·상태확인을 끼워 넣지 마라. 시연 중엔 1초가 중요하다.** |
+| (타입 지정) | `./demo.sh nudge UPSET` | ANNOYING \| UPSET \| ABSENCE_48H. 카운터 안 건드림 |
 | (userId 지정) | `./demo.sh nudge ABSENCE_48H 7` | |
+| "리셋" / "초기화" | `./demo.sh nudge reset` | 회전 카운터를 1회차로 초기화. 리허설 전에 |
 | "서버 켜줘" / "시연 준비" | STEP 3 절차 | |
 | "배포해줘" | STEP 2 절차 | |
 | "도메인 붙여줘" | STEP 1 절차 | |
@@ -345,7 +346,24 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-bat
 ★ 서버를 켜도 DB 데이터는 그대로다. `stop.sh` 는 EC2·NAT·ALB 만 destroy 하고
 RDS·Redis·S3·ECR·Route53·ACM 은 유지한다.
 
-### E. 넛지 동작 원리
+### E. 넛지 회전 규칙
+
+무대에서는 `./demo.sh nudge` 만 친다 (인자 없이).
+스크립트가 타입을 자동 회전시킨다:
+
+| 회차 | 타입 | 문구 |
+|---|---|---|
+| 1 | ABSENCE_48H | 이틀 동안 못 봤어요. 오늘 퀘스트 하나만 해볼까요? |
+| 2 | UPSET | 하루 종일 안 보이네요. 잠깐이라도 들러줄래요? |
+| 3 | ANNOYING | 완료하지 않은 퀘스트가 기다리고 있어요. |
+| 4 | → 1로 순환 | |
+
+- 리허설 전에는 `./demo.sh nudge reset` 으로 카운터를 초기화한다
+- 특정 타입을 꼭 써야 하면 `./demo.sh nudge UPSET` 으로 명시 지정한다 — 카운터를 건드리지 않는다
+- 매 발사마다 문구에 보이지 않는 문자(U+200B)가 붙어 앱이 중복으로 판정하지 않는다
+  → 앱 재시작 없이 같은 타입도 무한 반복 가능
+
+### F. 넛지 동작 원리
 
 서버는 신호를 메모리 큐(`ConcurrentHashMap`)에 넣는다.
 앱이 `POST /api/heartbeat` 를 보내는 순간 consume(remove) 되어 화면이 바뀐다.
@@ -367,7 +385,7 @@ HTTP 코드: 403=토큰불일치 / 404=userId없음·데모모드꺼짐 / 000=�
   `deploy.sh` 는 배포마다 이 파일을 다시 쓰는데 값을 이 파일 자신에서 승계한다.
   JWT_SECRET·DB_PASSWORD·GOOGLE_*·MYITH_DEMO_*·CORS 의 유일한 원본이다.
   지우면 전부 빈 값이 되고 데모 엔드포인트가 404 가 된다.
-- `demo.sh` / `start.sh` / `stop.sh` / `deploy.sh` / `build-and-deploy.sh` 를 수정하지 마라. 실행만.
+- `start.sh` / `stop.sh` / `deploy.sh` / `build-and-deploy.sh` 를 수정하지 마라. 실행만.
 - `terraform apply`·`destroy` 를 직접 부르지 마라.
 - DB 를 사용자 승인 없이 수정하지 마라 (SELECT 는 자유).
 - Vercel DNS 값을 추측하지 마라. 사용자가 준 값만 쓴다.

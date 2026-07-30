@@ -3,9 +3,11 @@
 #
 #   ./demo.sh up            서버 켜기 → 준비 완료까지 대기 → 점검표 출력
 #   ./demo.sh check         현재 상태만 점검 (서버 안 건드림)
-#   ./demo.sh nudge         넛지 발사 (기본 ABSENCE_48H)
-#   ./demo.sh nudge UPSET   타입 지정
+#   ./demo.sh nudge         넛지 발사 (타입 자동 회전: ABSENCE_48H → UPSET → ANNOYING)
+#   ./demo.sh nudge UPSET   타입 명시 지정 (카운터 안 건드림)
 #   ./demo.sh nudge ABSENCE_48H 3   타입 + userId
+#   ./demo.sh nudge ABSENCE_48H 3 "커스텀 문구"   타입 + userId + 문구
+#   ./demo.sh nudge reset   회전 카운터 초기화 (발사 안 함)
 #   ./demo.sh users         존재하는 userId 탐색
 #   ./demo.sh down          서버 끄기 (과금 중단)
 #
@@ -115,25 +117,93 @@ do_users(){
   echo "  /api/users/me 응답의 userId(usr_3 → 3) 로 확인해라."
 }
 
+ROTATION_TYPES=(ABSENCE_48H UPSET ANNOYING)
+ROTATION_COUNT=${#ROTATION_TYPES[@]}
+SEQ_FILE="$(dirname "${BASH_SOURCE[0]}")/.demo-nudge-seq"
+
+# 회전 카운터 읽기 (1-based). 파일 없으면 1.
+_seq_read(){ [ -f "$SEQ_FILE" ] && cat "$SEQ_FILE" || echo 1; }
+# 회전 카운터 쓰기
+_seq_write(){ printf '%s' "$1" > "$SEQ_FILE"; }
+# 회전 순서에서 타입 반환 (1-based seq)
+_seq_type(){ local i=$(( ($1 - 1) % ROTATION_COUNT )); echo "${ROTATION_TYPES[$i]}"; }
+# 다음 회전 정보 문자열
+_seq_next_info(){
+  local next=$1
+  local ni=$(( (next - 1) % ROTATION_COUNT + 1 ))
+  echo "$ni/$ROTATION_COUNT → $(_seq_type "$next")"
+}
+
 do_nudge(){
   local tk; tk=$(getenvv MYITH_DEMO_TOKEN)
-  local type="${1:-ABSENCE_48H}" uid="${2:-$USER_ID_DEFAULT}"
-  [ -z "${type:-}" ] && type=ABSENCE_48H
-  [ -z "${uid:-}" ] && uid=$USER_ID_DEFAULT
-  case "$type" in ANNOYING|UPSET|ABSENCE_48H) ;; *) no "type: ANNOYING | UPSET | ABSENCE_48H"; exit 1 ;; esac
   [ -z "${tk:-}" ] && { no "MYITH_DEMO_TOKEN 없음 — deploy/env.core 확인"; exit 1; }
 
-  hd "넛지 발사  userId=$uid  type=$type"
+  # reset 서브커맨드
+  if [ "${1:-}" = "reset" ]; then
+    _seq_write 1
+    ok "회전 카운터 초기화 → 1/3 ABSENCE_48H"
+    return 0
+  fi
+
+  local explicit_type="" uid="$USER_ID_DEFAULT" custom_msg=""
+  local rotating=false
+
+  if [ -z "${1:-}" ]; then
+    # 인자 없음 → 회전 모드
+    rotating=true
+    local seq; seq=$(_seq_read)
+    explicit_type=$(_seq_type "$seq")
+    local seq_label="$(( (seq - 1) % ROTATION_COUNT + 1 ))/$ROTATION_COUNT"
+  else
+    explicit_type="$1"
+    uid="${2:-$USER_ID_DEFAULT}"
+    custom_msg="${3:-}"
+  fi
+  [ -n "${2:-}" ] && [ "$rotating" = "false" ] && uid="$2"
+
+  local type="$explicit_type"
+  case "$type" in ANNOYING|UPSET|ABSENCE_48H) ;; *) no "type: ANNOYING | UPSET | ABSENCE_48H"; exit 1 ;; esac
+
+  # 회전 모드일 때 U+200B 트릭: 기본 문구 뒤에 현재 초 값만큼 제로폭 공백을 붙여 eventId 를 매번 다르게 만든다
+  local msg_param=""
+  if [ "$rotating" = "true" ] && [ -z "$custom_msg" ]; then
+    local secs; secs=$(date +%S)
+    local zwsp=""
+    for _ in $(seq 1 "$((10#$secs + 1))"); do zwsp="${zwsp}"$'\xe2\x80\x8b'; done
+    msg_param="$zwsp"
+  fi
+  [ -n "$custom_msg" ] && msg_param="$custom_msg"
+
+  if [ "$rotating" = "true" ]; then
+    hd "넛지 발사  회전 $seq_label → $type  userId=$uid"
+  else
+    hd "넛지 발사  userId=$uid  type=$type"
+  fi
+
   local t0 r b s
   t0=$(date +%H:%M:%S)
-  r=$(curl -s -w $'\n%{http_code}' --max-time 10 -X POST \
-      -H "X-Demo-Token: $tk" "$API/api/demo/nudge?userId=${uid}&type=${type}" 2>/dev/null)
+  if [ -n "$msg_param" ]; then
+    r=$(curl -s -w $'\n%{http_code}' --max-time 10 -X POST \
+        -H "X-Demo-Token: $tk" -G \
+        --data-urlencode "message=$msg_param" \
+        "$API/api/demo/nudge?userId=${uid}&type=${type}" 2>/dev/null)
+  else
+    r=$(curl -s -w $'\n%{http_code}' --max-time 10 -X POST \
+        -H "X-Demo-Token: $tk" \
+        "$API/api/demo/nudge?userId=${uid}&type=${type}" 2>/dev/null)
+  fi
   b=$(printf '%s' "$r" | sed '$d'); s=$(printf '%s' "$r" | tail -1)
   echo "  $t0   HTTP $s"
   echo "  $b"
   echo
   case "$s" in
     200) ok "서버 큐에 등록됨"
+         if [ "$rotating" = "true" ]; then
+           local next_seq=$(( seq + 1 ))
+           _seq_write "$next_seq"
+           echo
+           echo "  다음 발사는 $(_seq_next_info "$next_seq") 이다"
+         fi
          echo
          echo "  이제 앱이 다음 heartbeat 를 보내는 순간 화면이 바뀐다."
          echo "  큐는 만료되지 않는다 — 앱이 물어보기만 하면 반드시 전달된다."
@@ -145,8 +215,7 @@ do_nudge(){
          echo "       → ./demo.sh users 로 존재하는 userId 확인"
          echo "    4. 앱 폴링 주기가 긴가 (30초면 최대 30초 기다려야 한다)"
          echo
-         wa "쏜 뒤에 서버를 재배포·재시작하지 마라. 큐는 메모리에 있어 재시작하면 사라진다"
-         wa "여러 번 쏴도 하나로 덮인다(put). 연타는 의미 없다 — 위 4가지를 확인해라" ;;
+         wa "쏜 뒤에 서버를 재배포·재시작하지 마라. 큐는 메모리에 있어 재시작하면 사라진다" ;;
     403) no "토큰 불일치 — 서버에 주입된 값과 deploy/env.core 의 MYITH_DEMO_TOKEN 이 다르다"
          echo "     → deploy/env.core 를 고치고 ./build-and-deploy.sh core 로 재배포" ;;
     404) no "userId=$uid 가 없거나 데모 모드가 꺼져 있다"
@@ -171,7 +240,7 @@ case "${1:-}" in
   up)    do_up ;;
   check) do_check ;;
   users) do_users ;;
-  nudge|demo|show) shift; do_nudge "${1:-}" "${2:-}" ;;
+  nudge|demo|show) shift; do_nudge "${1:-}" "${2:-}" "${3:-}" ;;
   down)  do_down ;;
   *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
