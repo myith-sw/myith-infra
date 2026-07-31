@@ -458,3 +458,94 @@ npm start
 
 PM 노트북에서 키보드 7 / 8 / 9 → NORMAL / ANNOYING / UPSET.
 이 경로(playDemoPetState)는 중복 차단을 거치지 않아 무한히 동작하며 서버가 죽어도 된다.
+
+## §14 전체 재구축 (terraform destroy 이후)
+
+`terraform destroy` 로 모든 AWS 리소스를 삭제한 상태에서 처음부터 다시 올리는 절차다.
+소요시간: 약 30분 (DNS 전파 제외).
+
+### 전제
+
+- AWS CLI 인증 완료 (`aws sts get-caller-identity` 성공)
+- `terraform.tfvars` 존재 (로컬에 남아있다)
+- `deploy/env.core` 존재 (로컬에 남아있다)
+
+### STEP 1 — 인프라 생성 (Claude 실행, 약 10분)
+
+```bash
+cd /Users/sungyoon/Desktop/sw-contest/myith-infra/myith-infra
+terraform init
+terraform apply -auto-approve
+```
+
+완료 후 출력에서 아래 값을 확인한다:
+- Route53 네임서버 4개 (`terraform output -raw name_servers`)
+- RDS 엔드포인트 (`terraform output -raw rds_endpoint`)
+- Redis 엔드포인트 (`terraform output -raw redis_endpoint`)
+
+### STEP 2 — 가비아 네임서버 변경 (사람이 직접, 최대 1시간 대기)
+
+1. [가비아](https://www.gabia.com) 로그인 → 도메인 관리 → `myith.store`
+2. 네임서버 설정 → STEP 1 에서 나온 NS 4개 입력
+3. DNS 전파 대기. 확인:
+   ```bash
+   dig +short myith.store NS
+   # Route53 NS 4개가 나와야 한다
+   ```
+
+### STEP 3 — deploy/env.core 엔드포인트 갱신
+
+`terraform apply` 로 RDS·Redis 가 새로 생성되면 엔드포인트가 바뀐다.
+`deploy/env.core` 에서 아래 2줄만 갱신한다:
+
+```
+RDS_ENDPOINT=<STEP 1 에서 나온 rds_endpoint>
+REDIS_ENDPOINT=<STEP 1 에서 나온 redis_endpoint>
+```
+
+나머지(JWT_SECRET, GOOGLE_*, MYITH_DEMO_*, CORS 등)는 그대로 둔다.
+
+### STEP 4 — 서버 기동 + 시드 적재 (Claude 실행, 약 15분)
+
+```bash
+./start.sh --yes
+```
+
+`start.sh` 가 내부에서:
+1. `terraform apply` (이미 적용됨, 변경 0)
+2. `deploy.sh` → Worker 기동 (Alembic + 시드) → Core 기동 → 헬스체크
+
+### STEP 5 — Vercel 도메인 재연결
+
+Vercel 대시보드에서 `myith.store` 에 필요한 DNS 값(A 레코드 IP, CNAME)을 확인하고
+OPS.md §11 STEP 1 절차를 따른다.
+
+### STEP 6 — SSH 보안그룹 IP 갱신
+
+현재 공인 IP 가 보안그룹에 등록되어 있지 않으면 SSH 접속이 안 된다.
+```bash
+MY_IP=$(curl -s https://checkip.amazonaws.com)
+SG_ID=$(terraform output -raw core_security_group_id)
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 22 --cidr ${MY_IP}/32
+```
+
+### STEP 7 — 검증
+
+```bash
+./demo.sh check          # 전부 ✅ 인지
+./demo.sh nudge reset    # 넛지 카운터 초기화
+```
+
+### 체크리스트
+
+| # | 항목 | 확인 |
+|---|---|---|
+| 1 | `terraform apply` 성공 | |
+| 2 | 가비아 NS 변경 + `dig` 확인 | |
+| 3 | `deploy/env.core` RDS·Redis 엔드포인트 갱신 | |
+| 4 | `start.sh` 완료 + API 200 | |
+| 5 | `Google OAuth audiences configured: 2` (Core 로그) | |
+| 6 | Vercel 도메인 연결 + CORS preflight 통과 | |
+| 7 | `./demo.sh check` 전부 ✅ | |
+| 8 | 넛지 발사 테스트 (`./demo.sh nudge`) | |
