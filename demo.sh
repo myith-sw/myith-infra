@@ -167,10 +167,7 @@ do_nudge(){
   # 회전 모드일 때 U+200B 트릭: 기본 문구 뒤에 현재 초 값만큼 제로폭 공백을 붙여 eventId 를 매번 다르게 만든다
   local msg_param=""
   if [ "$rotating" = "true" ] && [ -z "$custom_msg" ]; then
-    local secs; secs=$(date +%S)
-    local zwsp=""
-    for _ in $(seq 1 "$((10#$secs + 1))"); do zwsp="${zwsp}"$'\xe2\x80\x8b'; done
-    msg_param="$zwsp"
+    msg_param=$(_make_unique_msg "$type")
   fi
   [ -n "$custom_msg" ] && msg_param="$custom_msg"
 
@@ -228,6 +225,36 @@ do_nudge(){
   esac
 }
 
+_make_unique_msg(){
+  local type=$1
+  local base=""
+  case "$type" in
+    ABSENCE_48H) base="이틀 동안 못 봤어요. 오늘 퀘스트 하나만 해볼까요?" ;;
+    UPSET)       base="하루 종일 안 보이네요. 잠깐이라도 들러줄래요?" ;;
+    ANNOYING)    base="완료하지 않은 퀘스트가 기다리고 있어요." ;;
+  esac
+  local secs; secs=$(date +%S)
+  local zwsp=""
+  for _ in $(seq 1 "$((10#$secs + 1))"); do zwsp="${zwsp}"$'\xe2\x80\x8b'; done
+  printf '%s' "${base}${zwsp}"
+}
+
+do_burst(){
+  hd "연속 발사 3→1 (3초 간격)"
+  local order=(ANNOYING UPSET ABSENCE_48H)
+  local uid="${1:-$USER_ID_DEFAULT}"
+  for type in "${order[@]}"; do
+    local msg; msg=$(_make_unique_msg "$type")
+    do_nudge "$type" "$uid" "$msg"
+    if [ "$type" != "ABSENCE_48H" ]; then
+      echo; echo "  ⏱  5초 대기..."; sleep 5
+    fi
+  done
+  _seq_write 1
+  echo
+  ok "3발 완료. 회전 카운터는 1/3 으로 초기화됨"
+}
+
 do_down(){
   hd "서버 끄기"
   wa "EC2·NAT·ALB 를 destroy 한다. RDS·Redis·Route53·ACM·ECR·S3 는 유지된다"
@@ -241,6 +268,7 @@ case "${1:-}" in
   check) do_check ;;
   users) do_users ;;
   nudge|demo|show) shift; do_nudge "${1:-}" "${2:-}" "${3:-}" ;;
+  burst) shift; do_burst "${1:-}" ;;
   down)  do_down ;;
   *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
